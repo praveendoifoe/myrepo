@@ -1,4 +1,4 @@
-#
+
 variable "location" {}
 variable "accesskey" {}
 variable "secretkey" {}
