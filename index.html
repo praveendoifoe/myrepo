@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Happy Birthday to you PD thanks</title>
+    <style>
+        body {
+            background-color: #f8f8f8;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .birthday-container {
+            width: 100%;
+            overflow: hidden;
+            background: linear-gradient(90deg, #ff9a9e, #fad0c4, #fad0c4, #ff9a9e);
+            padding: 20px 0;
+            text-align: center;
+        }
+        .scrolling-text {
+            white-space: nowrap;
+            animation: scroll 15s linear infinite;
+            font-size: 3em;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        @keyframes scroll {
+            0% {
+                transform: translateX(100%);
+            }
+            100% {
+                transform: translateX(-100%);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="birthday-container">
+        <div class="scrolling-text">
+            🎉 Happy Birthday! 🎂 Wishing you a fantastic day filled with joy and happiness! 🎁 Happy Birthday! 🎈
+        </div>
+    </div>
+</body>
+</html>
