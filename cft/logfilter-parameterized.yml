@@ -1,0 +1,381 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudTrail Log Filters and CloudWatch Alarms with Parameterization and SNS Notifications'
+
+Parameters:
+  CloudTrailLogGroup:
+    Type: String
+    Description: Name of the CloudTrail Log Group
+    Default: CloudTrail/DefaultLogGroup
+  
+
+      
+  SNSTopicEmail:
+    Type: String
+    Description: Email address to receive alarm notifications
+    Default: ''
+    
+  CreateSNSTopic:
+    Type: String
+    Description: Whether to create a new SNS topic for notifications
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  ExistingSNSTopicARN:
+    Type: String
+    Description: ARN of existing SNS topic (if CreateSNSTopic is false)
+    Default: ''
+
+Resources:
+  # SNS Topic for Alarm Notifications
+  SecurityAlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: CreateNewSNSTopic
+    Properties:
+      DisplayName: Security Alarm Notifications
+      TopicName: SecurityAlarmNotifications
+      
+  SecurityAlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: CreateNewSNSTopic
+    Properties:
+      Protocol: email
+      Endpoint: !Ref SNSTopicEmail
+      TopicArn: !Ref SecurityAlarmTopic
+  
+  # Root Account Usage
+  RootAccountUsageFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.userIdentity.type = "Root" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != "AwsServiceEvent" }'
+      MetricTransformations:
+        - MetricName: RootAccountUsage
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  RootAccountUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: RootAccountUsageAlarm
+      MetricName: RootAccountUsage
+      Namespace: CloudTrail
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions: 
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      OKActions:
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      InsufficientDataActions: []
+
+  # Bucket Policy Change
+  BucketPolicyChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ ($.eventName = "PutBucketPolicy") || ($.eventName = "DeleteBucketPolicy") }'
+      MetricTransformations:
+        - MetricName: BucketPolicyChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  BucketPolicyChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: BucketPolicyChangeAlarm
+      MetricName: BucketPolicyChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: 
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      OKActions:
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      InsufficientDataActions: []
+
+  # Access Denied
+  AccessDeniedFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.errorCode = "AccessDenied" }'
+      MetricTransformations:
+        - MetricName: AccessDenied
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  AccessDeniedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: AccessDeniedAlarm
+      MetricName: AccessDenied
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: 
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      OKActions:
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      InsufficientDataActions: []
+
+  # Publicly Accessible DB
+  PubliclyAccessibleDBFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventName = "CreateDBInstance" && $.requestParameters.publiclyAccessible = true }'
+      MetricTransformations:
+        - MetricName: PubliclyAccessibleDB
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  PubliclyAccessibleDBAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: PubliclyAccessibleDBAlarm
+      MetricName: PubliclyAccessibleDB
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: []
+      OKActions: []
+      InsufficientDataActions: []
+
+  # Config Change
+  ConfigChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventSource = "config.amazonaws.com" }'
+      MetricTransformations:
+        - MetricName: ConfigChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  ConfigChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ConfigChangeAlarm
+      MetricName: ConfigChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: []
+      OKActions: []
+      InsufficientDataActions: []
+
+  # CloudTrail Config Change
+  CloudTrailConfigChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventName = "CreateTrail" || $.eventName = "UpdateTrail" || $.eventName = "DeleteTrail" }'
+      MetricTransformations:
+        - MetricName: CloudTrailConfigChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  CloudTrailConfigChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: CloudTrailConfigChangeAlarm
+      MetricName: CloudTrailConfigChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: []
+      OKActions: []
+      InsufficientDataActions: []
+
+  # IAM Policy Change
+  IAMPolicyChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventSource = "iam.amazonaws.com" && ($.eventName = "PutGroupPolicy" || $.eventName = "PutRolePolicy" || $.eventName = "PutUserPolicy") }'
+      MetricTransformations:
+        - MetricName: IAMPolicyChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  IAMPolicyChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: IAMPolicyChangeAlarm
+      MetricName: IAMPolicyChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: []
+      OKActions: []
+      InsufficientDataActions: []
+
+  # Security Group Change
+  SecurityGroupChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventSource = "ec2.amazonaws.com" && ($.eventName = "AuthorizeSecurityGroupIngress" || $.eventName = "AuthorizeSecurityGroupEgress" || $.eventName = "RevokeSecurityGroupIngress" || $.eventName = "RevokeSecurityGroupEgress") }'
+      MetricTransformations:
+        - MetricName: SecurityGroupChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  SecurityGroupChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: SecurityGroupChangeAlarm
+      MetricName: SecurityGroupChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: []
+      OKActions: []
+      InsufficientDataActions: []
+
+  # NACL Change
+  NACLChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventSource = "ec2.amazonaws.com" && ($.eventName = "CreateNetworkAcl" || $.eventName = "DeleteNetworkAcl" || $.eventName = "ReplaceNetworkAclAssociation" || $.eventName = "ReplaceNetworkAclEntry") }'
+      MetricTransformations:
+        - MetricName: NACLChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  NACLChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: NACLChangeAlarm
+      MetricName: NACLChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: []
+      OKActions: []
+      InsufficientDataActions: []
+
+  # Route Table Change
+  RouteTableChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventSource = "ec2.amazonaws.com" && ($.eventName = "CreateRouteTable" || $.eventName = "DeleteRouteTable" || $.eventName = "ReplaceRouteTableAssociation" || $.eventName = "CreateRoute" || $.eventName = "DeleteRoute") }'
+      MetricTransformations:
+        - MetricName: RouteTableChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  RouteTableChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: RouteTableChangeAlarm
+      MetricName: RouteTableChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: []
+      OKActions: []
+      InsufficientDataActions: []
+
+  # VPC Change
+  VPCChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventSource = "ec2.amazonaws.com" && ($.eventName = "CreateVpc" || $.eventName = "DeleteVpc" || $.eventName = "ModifyVpcAttribute" || $.eventName = "CreateSubnet" || $.eventName = "DeleteSubnet" || $.eventName = "ModifySubnetAttribute" || $.eventName = "CreateInternetGateway" || $.eventName = "DeleteInternetGateway" || $.eventName = "AttachInternetGateway" || $.eventName = "DetachInternetGateway") }'
+      MetricTransformations:
+        - MetricName: VPCChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  VPCChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: VPCChangeAlarm
+      MetricName: VPCChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: 
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      OKActions:
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      InsufficientDataActions: []
+      
+  # RDS Configuration Change
+  RDSConfigChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.eventSource = "rds.amazonaws.com" && ($.eventName = "CreateDBParameterGroup" || $.eventName = "ModifyDBParameterGroup" || $.eventName = "DeleteDBParameterGroup" || $.eventName = "CreateDBSecurityGroup" || $.eventName = "ModifyDBSecurityGroup" || $.eventName = "DeleteDBSecurityGroup" || $.eventName = "AddRoleToDBInstance" || $.eventName = "RemoveRoleFromDBInstance" || $.eventName = "CreateOptionGroup" || $.eventName = "ModifyOptionGroup" || $.eventName = "DeleteOptionGroup" || $.eventName = "AuthorizeDBSecurityGroupIngress" || $.eventName = "RevokeDBSecurityGroupIngress" || $.eventName = "FailoverDBCluster") }'
+      MetricTransformations:
+        - MetricName: RDSConfigChange
+          MetricNamespace: !Ref MetricNamespace
+          MetricValue: '1'
+
+  RDSConfigChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: RDSConfigChangeAlarm
+      MetricName: RDSConfigChange
+      Namespace: !Ref MetricNamespace
+      Statistic: Sum
+      Period: !Ref AlarmPeriod
+      EvaluationPeriods: !Ref EvaluationPeriods
+      Threshold: !Ref AlarmThreshold
+      ComparisonOperator: !Ref ComparisonOperator
+      AlarmActions: 
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      OKActions:
+        - !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+      InsufficientDataActions: []
+
+Conditions:
+  CreateNewSNSTopic: !Equals [!Ref CreateSNSTopic, 'true']
+  HasEmail: !Not [!Equals [!Ref SNSTopicEmail, '']]
+
+Outputs:
+  CloudTrailLogGroupName:
+    Description: The name of the CloudTrail Log Group
+    Value: !Ref CloudTrailLogGroup
+    
+  SNSTopicARN:
+    Description: ARN of the SNS Topic for alarm notifications
+    Value: !If [CreateNewSNSTopic, !Ref SecurityAlarmTopic, !Ref ExistingSNSTopicARN]
+    Condition: HasEmail
